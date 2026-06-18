@@ -438,6 +438,18 @@ export default function PayrollPage() {
                               <p className="text-[11px] text-slate-400">EPF Admin (0.5%)</p>
                               <p className="font-semibold text-slate-600">₹{fmt(s.totalEpfAdmin)}</p>
                             </div>
+                            <div>
+                              <p className="text-[11px] text-slate-400">Penalty Deducted</p>
+                              <p className="font-semibold text-orange-600">₹{fmt(s.totalPenalty)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-slate-400">Advance Deducted</p>
+                              <p className="font-semibold text-orange-600">₹{fmt(s.totalAdvance)}</p>
+                            </div>
+                            <div>
+                              <p className="text-[11px] text-slate-400">Net Pay</p>
+                              <p className="font-semibold text-green-700">₹{fmt(s.totalNet)}</p>
+                            </div>
                           </div>
                         </div>
                       ))

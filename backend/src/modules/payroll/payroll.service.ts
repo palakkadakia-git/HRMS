@@ -657,33 +657,57 @@ export class PayrollService {
 
   async getSiteCostReport(runId: string) {
     await this.findRunById(runId);
-    const allocations = await this.prisma.payslipSiteAllocation.findMany({
-      where: { payslip: { payrollRunId: runId } },
-      include: {
-        payslip: {
-          select: {
-            employee: {
-              select: { id: true, employeeCode: true, firstName: true, lastName: true, designation: true },
+
+    const [allocations, payslips] = await Promise.all([
+      this.prisma.payslipSiteAllocation.findMany({
+        where: { payslip: { payrollRunId: runId } },
+        include: {
+          payslip: {
+            select: {
+              employee: {
+                select: { id: true, employeeCode: true, firstName: true, lastName: true, designation: true },
+              },
             },
           },
         },
-      },
-      orderBy: [{ siteName: 'asc' }, { payslip: { employee: { employeeCode: 'asc' } } }],
-    });
+        orderBy: [{ siteName: 'asc' }, { payslip: { employee: { employeeCode: 'asc' } } }],
+      }),
+      // Fetch payslip-level deductions (penalty, advance, net) grouped by primary site
+      this.prisma.payslip.findMany({
+        where: { payrollRunId: runId },
+        select: {
+          penaltyDeduction: true,
+          advanceDeduction: true,
+          net:              true,
+          employee: {
+            select: {
+              siteAssignments: {
+                where:   { isPrimary: true },
+                select:  { siteId: true },
+                take:    1,
+              },
+            },
+          },
+        },
+      }),
+    ]);
 
-    // Group by site for summary totals
+    // Group by site for summary totals (from allocations — earnings & statutory)
     const siteTotals = new Map<string, {
-      siteName: string | null;
-      count: number;
-      totalGross: number;
-      totalEmpPF: number;
-      totalEmpESI: number;
-      totalPT: number;
-      totalEmplPF: number;
-      totalEmplESI: number;
-      totalEdli: number;
-      totalEpfAdmin: number;
-      totalCost: number;
+      siteName:         string | null;
+      count:            number;
+      totalGross:       number;
+      totalEmpPF:       number;
+      totalEmpESI:      number;
+      totalPT:          number;
+      totalEmplPF:      number;
+      totalEmplESI:     number;
+      totalEdli:        number;
+      totalEpfAdmin:    number;
+      totalCost:        number;
+      totalPenalty:     number;
+      totalAdvance:     number;
+      totalNet:         number;
     }>();
 
     for (const a of allocations) {
@@ -693,6 +717,7 @@ export class PayrollService {
           siteName: a.siteName, count: 0,
           totalGross: 0, totalEmpPF: 0, totalEmpESI: 0, totalPT: 0,
           totalEmplPF: 0, totalEmplESI: 0, totalEdli: 0, totalEpfAdmin: 0, totalCost: 0,
+          totalPenalty: 0, totalAdvance: 0, totalNet: 0,
         });
       }
       const t = siteTotals.get(key)!;
@@ -706,6 +731,18 @@ export class PayrollService {
       t.totalEdli    += Number(a.edli);
       t.totalEpfAdmin+= Number(a.epfAdmin);
       t.totalCost    += Number(a.totalCost);
+    }
+
+    // Attribute payslip-level deductions (penalty, advance, net) to primary site
+    for (const ps of payslips) {
+      const primarySiteId = ps.employee.siteAssignments[0]?.siteId ?? null;
+      const key = primarySiteId ?? '__unallocated__';
+      const t = siteTotals.get(key);
+      if (t) {
+        t.totalPenalty += Number(ps.penaltyDeduction);
+        t.totalAdvance += Number(ps.advanceDeduction);
+        t.totalNet     += Number(ps.net);
+      }
     }
 
     return {
