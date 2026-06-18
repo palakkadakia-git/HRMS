@@ -7,6 +7,9 @@ export class CreatePenaltyDto {
   @IsString()
   witnessId: string;
 
+  @IsString()
+  siteId: string;
+
   @IsNumber()
   @Min(1)
   amount: number;

@@ -40,6 +40,8 @@ const NAV_GROUPS: NavGroup[] = [
     items: [
       { href: '/payroll',   icon: '💰', label: 'Run Payroll' },
       { href: '/payslips',  icon: '📄', label: 'Payslips'   },
+      { href: '/advances',   icon: '💸', label: 'Advances'   },
+      { href: '/penalties',  icon: '⚠️', label: 'Penalties'  },
     ],
   },
   {

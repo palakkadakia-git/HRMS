@@ -11,12 +11,14 @@ export class PenaltiesController {
   @RequirePermission('penalties', 'read')
   findAll(
     @Query('employeeId') employeeId?: string,
+    @Query('siteId')     siteId?:     string,
     @Query('month')      month?:      string,
     @Query('year')       year?:       string,
     @Query('status')     status?:     string,
   ) {
     return this.svc.findAll({
       employeeId,
+      siteId,
       month: month ? parseInt(month) : undefined,
       year:  year  ? parseInt(year)  : undefined,
       status,

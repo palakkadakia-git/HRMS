@@ -22,6 +22,10 @@ export class CreateAdvanceDto {
   @IsString()
   reason?: string;
 
+  @IsOptional()
+  @IsString()
+  approvedBy?: string;
+
   /** Required for ADHOC — monthly recovery amount */
   @IsOptional()
   @IsNumber()
@@ -30,14 +34,17 @@ export class CreateAdvanceDto {
 }
 
 export class BulkWeeklyAdvanceDto {
-  /** Employee IDs to issue ₹1,000 weekly advance to */
   @IsArray()
   @IsString({ each: true })
   employeeIds: string[];
 
-  /** The Sunday date (ISO string) the advance was given */
   @IsDateString()
   disbursedOn: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Min(1)
+  amount?: number;
 
   @IsOptional()
   @IsString()

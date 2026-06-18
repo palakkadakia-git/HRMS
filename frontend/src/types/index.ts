@@ -126,6 +126,119 @@ export interface CreateMinimumWageDto {
   effectiveFrom: string;
 }
 
+// ── Advances ──────────────────────────────────────────────
+export type AdvanceType   = 'ADHOC' | 'WEEKLY';
+export type AdvanceStatus = 'ACTIVE' | 'RECOVERED' | 'WRITTEN_OFF';
+
+export interface AdvanceRecovery {
+  id:           string;
+  advanceId:    string;
+  amount:       number;
+  month:        number;
+  year:         number;
+  payrollRunId?: string | null;
+  note?:        string | null;
+  createdAt:    string;
+}
+
+export interface EmployeeAdvance {
+  id:                string;
+  employeeId:        string;
+  type:              AdvanceType;
+  amount:            number;
+  disbursedOn:       string;
+  reason?:           string | null;
+  approvedBy?:       string | null;
+  installmentAmount?: number | null;
+  balanceAmount:     number;
+  status:            AdvanceStatus;
+  createdAt:         string;
+  updatedAt:         string;
+  employee?: {
+    id:           string;
+    employeeCode: string;
+    firstName:    string;
+    lastName:     string;
+    designation?: string;
+    siteAssignments?: Array<{
+      site: Pick<Site, 'id' | 'name'>;
+    }>;
+  };
+  recoveries?: AdvanceRecovery[];
+}
+
+export interface CreateAdvanceDto {
+  employeeId:        string;
+  type:              AdvanceType;
+  amount:            number;
+  disbursedOn:       string;
+  reason?:           string;
+  approvedBy?:       string;
+  installmentAmount?: number;
+}
+
+export interface BulkWeeklyAdvanceDto {
+  employeeIds: string[];
+  disbursedOn: string;
+  amount?:     number;
+  reason?:     string;
+}
+
+// ── Penalties ─────────────────────────────────────────────
+export type PenaltyStatus = 'PENDING' | 'PARTIALLY_RECOVERED' | 'RECOVERED' | 'CANCELLED';
+
+export interface PenaltyRecovery {
+  id:           string;
+  penaltyId:    string;
+  amount:       number;
+  month:        number;
+  year:         number;
+  payrollRunId?: string | null;
+  createdAt:    string;
+}
+
+export interface Penalty {
+  id:            string;
+  employeeId:    string;
+  witnessId:     string;
+  siteId?:       string | null;
+  amount:        number;
+  balanceAmount: number;
+  reason:        string;
+  date:          string;
+  month:         number;
+  year:          number;
+  status:        PenaltyStatus;
+  cancelledBy?:  string | null;
+  cancelReason?: string | null;
+  cancelledAt?:  string | null;
+  createdAt:     string;
+  updatedAt:     string;
+  employee?: {
+    id: string; employeeCode: string; firstName: string; lastName: string; designation?: string;
+    siteAssignments?: Array<{ site: Pick<Site, 'id' | 'name'> }>;
+  };
+  witness?: {
+    id: string; employeeCode: string; firstName: string; lastName: string; designation?: string;
+  };
+  site?: Pick<Site, 'id' | 'name' | 'city' | 'state'> | null;
+  recoveries?: PenaltyRecovery[];
+}
+
+export interface CreatePenaltyDto {
+  employeeId: string;
+  witnessId:  string;
+  siteId:     string;
+  amount:     number;
+  reason:     string;
+  date:       string;
+}
+
+export interface CancelPenaltyDto {
+  cancelledBy:  string;
+  cancelReason: string;
+}
+
 // ── Salary Revision ────────────────────────────────────────
 export interface SalaryRevision {
   id: string;

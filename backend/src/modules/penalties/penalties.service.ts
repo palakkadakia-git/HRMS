@@ -10,6 +10,7 @@ export class PenaltiesService {
 
   async findAll(filters: {
     employeeId?: string;
+    siteId?:     string;
     month?:      number;
     year?:       number;
     status?:     string;
@@ -17,7 +18,8 @@ export class PenaltiesService {
     return this.prisma.penalty.findMany({
       where: {
         ...(filters.employeeId && { employeeId: filters.employeeId }),
-        ...(filters.month      && { month:      filters.month }),
+        ...(filters.siteId     && { siteId:     filters.siteId }),
+        ...(filters.month      && { month:       filters.month }),
         ...(filters.year       && { year:        filters.year }),
         ...(filters.status     && { status:      filters.status as any }),
       },
@@ -36,6 +38,7 @@ export class PenaltiesService {
         witness: {
           select: { id: true, employeeCode: true, firstName: true, lastName: true, designation: true },
         },
+        site: { select: { id: true, name: true, city: true, state: true } },
         recoveries: { orderBy: { createdAt: 'desc' } },
       },
       orderBy: { date: 'desc' },
@@ -62,12 +65,14 @@ export class PenaltiesService {
   // ── Create ────────────────────────────────────────────────────────────────────
 
   async create(dto: CreatePenaltyDto) {
-    const [employee, witness] = await Promise.all([
+    const [employee, witness, site] = await Promise.all([
       this.prisma.employee.findUnique({ where: { id: dto.employeeId } }),
       this.prisma.employee.findUnique({ where: { id: dto.witnessId  } }),
+      this.prisma.site.findUnique({ where: { id: dto.siteId } }),
     ]);
     if (!employee) throw new NotFoundException('Employee not found');
     if (!witness)  throw new NotFoundException('Witness not found');
+    if (!site)     throw new NotFoundException('Site not found');
 
     const date  = new Date(dto.date);
     const month = date.getMonth() + 1;
@@ -77,6 +82,7 @@ export class PenaltiesService {
       data: {
         employeeId:    dto.employeeId,
         witnessId:     dto.witnessId,
+        siteId:        dto.siteId,
         amount:        dto.amount,
         balanceAmount: dto.amount,
         reason:        dto.reason,
@@ -102,10 +108,10 @@ export class PenaltiesService {
     return this.prisma.penalty.update({
       where: { id },
       data: {
-        status:      'CANCELLED',
-        cancelledBy: dto.cancelledBy,
+        status:       'CANCELLED',
+        cancelledBy:  dto.cancelledBy,
         cancelReason: dto.cancelReason,
-        cancelledAt: new Date(),
+        cancelledAt:  new Date(),
       },
     });
   }

@@ -1,7 +1,7 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 
-export type AppModule = 'employees' | 'attendance' | 'leave' | 'payroll' | 'advances' | 'reports' | 'settings' | 'kiosk';
+export type AppModule = 'employees' | 'attendance' | 'leave' | 'payroll' | 'advances' | 'penalties' | 'reports' | 'settings' | 'kiosk';
 export type CrudAction = 'create' | 'read' | 'update' | 'delete';
 
 export interface PermissionRow {
@@ -24,6 +24,7 @@ const DEFAULTS: PermissionRow[] = [
   { role: 'HR', module: 'reports',    canCreate: true,  canRead: true, canUpdate: true,  canDelete: true  },
   { role: 'HR', module: 'settings',   canCreate: false, canRead: true, canUpdate: false, canDelete: false },
   { role: 'HR', module: 'advances',   canCreate: true,  canRead: true, canUpdate: true,  canDelete: true  },
+  { role: 'HR', module: 'penalties',  canCreate: true,  canRead: true, canUpdate: true,  canDelete: true  },
   { role: 'HR', module: 'kiosk',      canCreate: true,  canRead: true, canUpdate: true,  canDelete: true  },
   // ACCOUNTS
   { role: 'ACCOUNTS', module: 'employees',  canCreate: false, canRead: true, canUpdate: false, canDelete: false },
@@ -33,10 +34,11 @@ const DEFAULTS: PermissionRow[] = [
   { role: 'ACCOUNTS', module: 'reports',    canCreate: true,  canRead: true, canUpdate: true,  canDelete: true  },
   { role: 'ACCOUNTS', module: 'settings',   canCreate: false, canRead: true, canUpdate: false, canDelete: false },
   { role: 'ACCOUNTS', module: 'advances',   canCreate: true,  canRead: true, canUpdate: true,  canDelete: true  },
+  { role: 'ACCOUNTS', module: 'penalties',  canCreate: false, canRead: true, canUpdate: false, canDelete: false },
   { role: 'ACCOUNTS', module: 'kiosk',      canCreate: false, canRead: true, canUpdate: false, canDelete: false },
 ];
 
-const ALL_MODULES: AppModule[] = ['employees', 'attendance', 'leave', 'payroll', 'advances', 'reports', 'settings', 'kiosk'];
+const ALL_MODULES: AppModule[] = ['employees', 'attendance', 'leave', 'payroll', 'advances', 'penalties', 'reports', 'settings', 'kiosk'];
 
 // ── Cache ─────────────────────────────────────────────────────────────────────
 

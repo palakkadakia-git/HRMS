@@ -31,7 +31,7 @@ export class PermissionsController {
   getMyPermissions(@CurrentUser('role') role: string) {
     if (role === 'ADMIN') {
       // ADMIN always has full CRUD — return a synthetic full-access matrix
-      const MODULES = ['employees', 'attendance', 'leave', 'payroll', 'reports', 'settings', 'kiosk'];
+      const MODULES = ['employees', 'attendance', 'leave', 'payroll', 'advances', 'penalties', 'reports', 'settings', 'kiosk'];
       return MODULES.map(module => ({
         role,
         module,

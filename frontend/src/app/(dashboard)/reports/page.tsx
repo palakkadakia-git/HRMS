@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import Header from '@/components/layout/Header';
 import { useQuery } from '@tanstack/react-query';
 import api from '@/lib/api';
@@ -234,6 +235,24 @@ export default function ReportsPage() {
                   {REPORTS.map(def => (
                     <ReportCard key={def.id} def={def} run={selected} />
                   ))}
+                </div>
+
+                {/* Statutory registers */}
+                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide mt-6 mb-3">
+                  Statutory Registers
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <Link href="/reports/form-xxi" className="no-underline">
+                    <div className="bg-white border border-slate-200 rounded-xl p-5 flex items-start gap-3 hover:shadow-sm transition-shadow cursor-pointer">
+                      <span className="text-3xl">⚖️</span>
+                      <div>
+                        <h3 className="font-semibold text-slate-800">Form XXI — Register of Fines</h3>
+                        <p className="text-xs text-slate-500 mt-0.5 leading-relaxed">
+                          Statutory register of penalties per site per month. [Rule 78 (2)(d)]
+                        </p>
+                      </div>
+                    </div>
+                  </Link>
                 </div>
               </>
             )}

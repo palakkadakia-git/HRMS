@@ -21,6 +21,7 @@ import { PermissionsModule } from './modules/permissions/permissions.module';
 import { RolesModule } from './modules/roles/roles.module';
 import { MinimumWagesModule } from './modules/minimum-wages/minimum-wages.module';
 import { AdvancesModule } from './modules/advances/advances.module';
+import { PenaltiesModule } from './modules/penalties/penalties.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { JwtAuthGuard } from './common/guards/jwt-auth.guard';
 import { PermissionsGuard } from './modules/permissions/permissions.guard';
@@ -54,6 +55,7 @@ import { PermissionsGuard } from './modules/permissions/permissions.guard';
     RolesModule,
     MinimumWagesModule,
     AdvancesModule,
+    PenaltiesModule,
     ReportsModule,
   ],
   providers: [

@@ -108,7 +108,9 @@ model Employee {
   leaveRecords    LeaveRecord[]
   payslips        Payslip[]
   siteSummaries   AttendanceSiteSummary[]
-  advances        EmployeeAdvance[]
+  advances          EmployeeAdvance[]
+  penalties         Penalty[]         @relation("PenaltyEmployee")
+  witnessedPenalties Penalty[]        @relation("PenaltyWitness")
 
   @@map("employees")
 }
@@ -172,6 +174,7 @@ model Site {
   holidays            Holiday[]
   siteSummaries       AttendanceSiteSummary[]
   payslipAllocations  PayslipSiteAllocation[]
+  penalties           Penalty[]
 
   @@map("sites")
 }
@@ -480,8 +483,9 @@ model PayrollRun {
   runAt  DateTime      @default(now())
   runBy  String?
 
-  payslips          Payslip[]
-  advanceRecoveries AdvanceRecovery[]
+  payslips           Payslip[]
+  advanceRecoveries  AdvanceRecovery[]
+  penaltyRecoveries  PenaltyRecovery[]
 
   @@unique([month, year])
   @@map("payroll_runs")
@@ -609,6 +613,7 @@ model EmployeeAdvance {
   amount            Decimal       @db.Decimal(10, 2)   // amount disbursed
   disbursedOn       DateTime      @db.Date             // date of disbursement
   reason            String?
+  approvedBy        String?                              // name of approver (approval workflow TBD)
   installmentAmount Decimal?      @db.Decimal(10, 2)   // ADHOC: agreed monthly recovery
   balanceAmount     Decimal       @db.Decimal(10, 2)   // outstanding (starts = amount)
   status            AdvanceStatus @default(ACTIVE)
@@ -635,6 +640,58 @@ model AdvanceRecovery {
   payrollRun PayrollRun?     @relation(fields: [payrollRunId], references: [id], onDelete: SetNull)
 
   @@map("advance_recoveries")
+}
+
+// ============================================================
+// PENALTIES
+// ============================================================
+
+enum PenaltyStatus {
+  PENDING
+  PARTIALLY_RECOVERED
+  RECOVERED
+  CANCELLED
+}
+
+model Penalty {
+  id            String        @id @default(uuid())
+  employeeId    String
+  witnessId     String
+  siteId        String?
+  amount        Decimal       @db.Decimal(10, 2)
+  balanceAmount Decimal       @db.Decimal(10, 2)
+  reason        String
+  date          DateTime      @db.Date
+  month         Int
+  year          Int
+  status        PenaltyStatus @default(PENDING)
+  cancelledBy   String?
+  cancelReason  String?
+  cancelledAt   DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  employee   Employee          @relation("PenaltyEmployee", fields: [employeeId], references: [id], onDelete: Cascade)
+  witness    Employee          @relation("PenaltyWitness",  fields: [witnessId],  references: [id])
+  site       Site?             @relation(fields: [siteId], references: [id])
+  recoveries PenaltyRecovery[]
+
+  @@map("penalties")
+}
+
+model PenaltyRecovery {
+  id           String   @id @default(uuid())
+  penaltyId    String
+  amount       Decimal  @db.Decimal(10, 2)
+  month        Int
+  year         Int
+  payrollRunId String?
+  createdAt    DateTime @default(now())
+
+  penalty    Penalty     @relation(fields: [penaltyId], references: [id], onDelete: Cascade)
+  payrollRun PayrollRun? @relation(fields: [payrollRunId], references: [id], onDelete: SetNull)
+
+  @@map("penalty_recoveries")
 }
 
 // ============================================================

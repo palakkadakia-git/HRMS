@@ -75,6 +75,7 @@ export class AdvancesService {
         amount:            dto.amount,
         disbursedOn:       new Date(dto.disbursedOn),
         reason:            dto.reason ?? null,
+        approvedBy:        dto.approvedBy ?? null,
         installmentAmount: dto.installmentAmount ?? null,
         balanceAmount:     dto.amount,
         status:            AdvanceStatus.ACTIVE,
@@ -99,7 +100,7 @@ export class AdvancesService {
     }
 
     const disbursedOn = new Date(dto.disbursedOn);
-    const WEEKLY_AMOUNT = 1000;
+    const WEEKLY_AMOUNT = dto.amount ?? 1000;
 
     const created = await this.prisma.$transaction(
       dto.employeeIds.map(empId =>

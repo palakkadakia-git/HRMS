@@ -1,4 +1,4 @@
-import { Controller, Get, Param, Res } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res, BadRequestException } from '@nestjs/common';
 import { Response } from 'express';
 import { ReportsService } from './reports.service';
 
@@ -16,6 +16,19 @@ function sendExcel(res: Response, buffer: Buffer, filename: string) {
 @Controller('reports')
 export class ReportsController {
   constructor(private readonly svc: ReportsService) {}
+
+  // GET /api/reports/form-xxi?siteId=&month=&year=
+  @Get('form-xxi')
+  formXXI(
+    @Query('siteId') siteId: string,
+    @Query('month')  month:  string,
+    @Query('year')   year:   string,
+  ) {
+    if (!siteId || !month || !year) {
+      throw new BadRequestException('siteId, month, and year are required');
+    }
+    return this.svc.formXXI(siteId, parseInt(month), parseInt(year));
+  }
 
   // GET /api/reports/runs/:id/salary-register
   @Get('runs/:id/salary-register')

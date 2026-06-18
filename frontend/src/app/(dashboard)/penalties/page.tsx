@@ -4,6 +4,7 @@ import { useState } from 'react';
 import Header from '@/components/layout/Header';
 import { usePenalties, useStaffEmployees, useCreatePenalty, useCancelPenalty } from '@/hooks/usePenalties';
 import { useEmployees } from '@/hooks/useEmployees';
+import { useSites } from '@/hooks/useSites';
 import { usePermissions } from '@/hooks/usePermissions';
 import type { Penalty, PenaltyStatus } from '@/types';
 
@@ -31,8 +32,9 @@ const STATUS_BADGE: Record<PenaltyStatus, string> = {
 // ── Issue Penalty Modal ───────────────────────────────────────────────────────
 
 function IssuePenaltyModal({ onClose }: { onClose: () => void }) {
-  const { data: empPage }  = useEmployees({ limit: 100 });
+  const { data: empPage }    = useEmployees({ limit: 100 });
   const { data: staff = [] } = useStaffEmployees();
+  const { data: sites = [] } = useSites();
   const create = useCreatePenalty();
 
   const employees = (empPage?.data ?? []).filter(e => e.status !== 'INACTIVE');
@@ -40,6 +42,7 @@ function IssuePenaltyModal({ onClose }: { onClose: () => void }) {
   const [form, setForm] = useState({
     employeeId: '',
     witnessId:  '',
+    siteId:     '',
     amount:     '',
     reason:     '',
     date:       new Date().toISOString().slice(0, 10),
@@ -52,6 +55,7 @@ function IssuePenaltyModal({ onClose }: { onClose: () => void }) {
     await create.mutateAsync({
       employeeId: form.employeeId,
       witnessId:  form.witnessId,
+      siteId:     form.siteId,
       amount:     parseFloat(form.amount),
       reason:     form.reason,
       date:       form.date,
@@ -75,6 +79,16 @@ function IssuePenaltyModal({ onClose }: { onClose: () => void }) {
                 <option key={emp.id} value={emp.id}>
                   {emp.employeeCode} — {emp.firstName} {emp.lastName}
                 </option>
+              ))}
+            </select>
+          </div>
+
+          <div>
+            <label className="label">Site</label>
+            <select className="input" value={form.siteId} onChange={e => set('siteId', e.target.value)} required>
+              <option value="">Select site…</option>
+              {sites.filter(s => s.isActive).map(s => (
+                <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>
@@ -244,6 +258,7 @@ export default function PenaltiesPage() {
             <thead>
               <tr className="bg-slate-50 border-b border-slate-200">
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Employee</th>
+                <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Site</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Date</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Reason</th>
                 <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Witness</th>
@@ -266,6 +281,7 @@ export default function PenaltiesPage() {
                     </div>
                     <div className="text-xs text-slate-400">{p.employee?.employeeCode}</div>
                   </td>
+                  <td className="px-4 py-3 text-slate-600 text-xs">{p.site?.name ?? '—'}</td>
                   <td className="px-4 py-3 text-slate-600 whitespace-nowrap">{fmtDate(p.date)}</td>
                   <td className="px-4 py-3 text-slate-600 max-w-xs">
                     <p className="truncate" title={p.reason}>{p.reason}</p>

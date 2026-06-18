@@ -271,6 +271,89 @@ export class ReportsService {
     return toBuffer(wb);
   }
 
+  // ── Form XXI — Register of Fines ─────────────────────────────────────────────
+
+  async formXXI(siteId: string, month: number, year: number) {
+    const [settings, site] = await Promise.all([
+      this.prisma.companySettings.findUnique({ where: { id: 'singleton' } }),
+      this.prisma.site.findUnique({ where: { id: siteId } }),
+    ]);
+    if (!site) throw new NotFoundException('Site not found');
+
+    const penalties = await this.prisma.penalty.findMany({
+      where: {
+        siteId,
+        month,
+        year,
+        status: { not: 'CANCELLED' },
+      },
+      include: {
+        employee: { select: { id: true, employeeCode: true, firstName: true, lastName: true, designation: true } },
+        witness:  { select: { firstName: true, lastName: true } },
+      },
+      orderBy: { date: 'asc' },
+    });
+
+    // Fetch payslips for these employees in this month/year
+    const payrollRun = await this.prisma.payrollRun.findUnique({
+      where: { month_year: { month, year } },
+    });
+
+    const payslipMap = new Map<string, { gross: number; empPF: number; empESI: number; pt: number }>();
+    if (payrollRun) {
+      const empIds = [...new Set(penalties.map(p => p.employeeId))];
+      const payslips = await this.prisma.payslip.findMany({
+        where: { payrollRunId: payrollRun.id, employeeId: { in: empIds } },
+        select: { employeeId: true, gross: true, empPF: true, empESI: true, pt: true },
+      });
+      for (const ps of payslips) {
+        payslipMap.set(ps.employeeId, {
+          gross:  Number(ps.gross),
+          empPF:  Number(ps.empPF),
+          empESI: Number(ps.empESI),
+          pt:     Number(ps.pt),
+        });
+      }
+    }
+
+    const siteAddress = [site.city, site.state].filter(Boolean).join(', ');
+
+    const rows = penalties.map((pen, i) => {
+      const ps = payslipMap.get(pen.employeeId);
+      const wagesPayable = ps ? Math.round((ps.gross - ps.empPF - ps.empESI - ps.pt) * 100) / 100 : null;
+
+      // Date realised = 1st of next calendar month
+      const penDate = new Date(pen.date);
+      const realisedDate = new Date(penDate.getFullYear(), penDate.getMonth() + 1, 1);
+
+      return {
+        srNo:          i + 1,
+        empCode:       pen.employee.employeeCode,
+        name:          `${pen.employee.firstName} ${pen.employee.lastName}`,
+        designation:   pen.employee.designation ?? '',
+        reason:        pen.reason,
+        date:          pen.date,
+        wagePeriod:    `${MONTHS[pen.month] ?? pen.month} ${pen.year}`,
+        wagesPayable,
+        fineAmount:    Number(pen.amount),
+        dateRealised:  realisedDate,
+        witnessName:   `${pen.witness.firstName} ${pen.witness.lastName}`,
+      };
+    });
+
+    return {
+      header: {
+        companyName:    settings?.companyName ?? '',
+        companyAddress: settings?.address ?? '',
+        siteName:       site.name,
+        siteAddress,
+      },
+      month,
+      year,
+      rows,
+    };
+  }
+
   // ── 4. ESI Contribution Statement ────────────────────────────────────────────
 
   async esiStatement(runId: string): Promise<Buffer> {
