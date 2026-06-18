@@ -658,7 +658,7 @@ export class PayrollService {
   async getSiteCostReport(runId: string) {
     await this.findRunById(runId);
 
-    const [allocations, payslips] = await Promise.all([
+    const [allocations, payslips, penaltyRecoveries] = await Promise.all([
       this.prisma.payslipSiteAllocation.findMany({
         where: { payslip: { payrollRunId: runId } },
         include: {
@@ -672,22 +672,29 @@ export class PayrollService {
         },
         orderBy: [{ siteName: 'asc' }, { payslip: { employee: { employeeCode: 'asc' } } }],
       }),
-      // Fetch payslip-level deductions (penalty, advance, net) grouped by primary site
+      // Payslip-level: advance deduction + net — attributed to employee's primary site
       this.prisma.payslip.findMany({
         where: { payrollRunId: runId },
         select: {
-          penaltyDeduction: true,
           advanceDeduction: true,
           net:              true,
           employee: {
             select: {
               siteAssignments: {
-                where:   { isPrimary: true },
-                select:  { siteId: true },
-                take:    1,
+                where:  { isPrimary: true },
+                select: { siteId: true },
+                take:   1,
               },
             },
           },
+        },
+      }),
+      // Penalty recoveries for this run — attributed to penalty.siteId
+      this.prisma.penaltyRecovery.findMany({
+        where: { payrollRunId: runId },
+        select: {
+          amount:  true,
+          penalty: { select: { siteId: true } },
         },
       }),
     ]);
@@ -733,15 +740,23 @@ export class PayrollService {
       t.totalCost    += Number(a.totalCost);
     }
 
-    // Attribute payslip-level deductions (penalty, advance, net) to primary site
+    // Advance deduction + net — attributed to employee's primary site
     for (const ps of payslips) {
       const primarySiteId = ps.employee.siteAssignments[0]?.siteId ?? null;
       const key = primarySiteId ?? '__unallocated__';
       const t = siteTotals.get(key);
       if (t) {
-        t.totalPenalty += Number(ps.penaltyDeduction);
         t.totalAdvance += Number(ps.advanceDeduction);
         t.totalNet     += Number(ps.net);
+      }
+    }
+
+    // Penalty recoveries — attributed to penalty.siteId
+    for (const rec of penaltyRecoveries) {
+      const key = rec.penalty.siteId ?? '__unallocated__';
+      const t = siteTotals.get(key);
+      if (t) {
+        t.totalPenalty += Number(rec.amount);
       }
     }
 
