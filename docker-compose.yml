@@ -1,0 +1,75 @@
+version: '3.9'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: hrms_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-hrms}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-hrmspassword}
+      POSTGRES_DB: ${POSTGRES_DB:-hrmsdb}
+    ports:
+      - '5432:5432'
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - hrms_network
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-hrms} -d ${POSTGRES_DB:-hrmsdb}']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      target: development
+    container_name: hrms_backend
+    restart: unless-stopped
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql://${POSTGRES_USER:-hrms}:${POSTGRES_PASSWORD:-hrmspassword}@postgres:5432/${POSTGRES_DB:-hrmsdb}
+      PORT: 3001
+    ports:
+      - '3001:3001'
+    volumes:
+      - ./backend:/app
+      - /app/node_modules
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - hrms_network
+    command: sh -c "npx prisma migrate deploy && npx prisma db seed && npm run start:dev"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: development
+    container_name: hrms_frontend
+    restart: unless-stopped
+    env_file:
+      - ./frontend/.env.local
+    environment:
+      INTERNAL_API_URL: http://backend:3001
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    depends_on:
+      - backend
+    networks:
+      - hrms_network
+
+volumes:
+  postgres_data:
+
+networks:
+  hrms_network:
+    driver: bridge

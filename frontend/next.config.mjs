@@ -1,0 +1,21 @@
+/** @type {import('next').NextConfig} */
+const nextConfig = {
+  // Needed for Docker production image
+  output: 'standalone',
+
+  // Proxy all /api/* requests to the NestJS backend.
+  // INTERNAL_API_URL is the Docker service name in containers,
+  // localhost:3001 for local dev outside Docker.
+  async rewrites() {
+    const backendUrl =
+      process.env.INTERNAL_API_URL || 'http://localhost:3001';
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${backendUrl}/api/:path*`,
+      },
+    ];
+  },
+};
+
+export default nextConfig;

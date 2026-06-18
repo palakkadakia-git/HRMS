@@ -1,0 +1,677 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ============================================================
+// AUTH
+// ============================================================
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String
+  role      String   @default("HR")
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("users")
+}
+
+// ── Role master ──────────────────────────────────────────────────────────────
+
+model Role {
+  id        String   @id @default(uuid())
+  name      String   @unique   // machine key: 'HR', 'ACCOUNTS', 'SUPERVISOR'
+  label     String             // display: 'HR', 'Accounts', 'Supervisor'
+  isSystem  Boolean  @default(false)   // true = cannot be deleted
+  createdAt DateTime @default(now())
+
+  @@map("roles")
+}
+
+// ============================================================
+// EMPLOYEES
+// ============================================================
+
+model Employee {
+  id           String @id @default(uuid())
+  employeeCode String @unique // Auto-generated: EMP001, EMP002 …
+
+  // ── Personal ──────────────────────────────────────────
+  firstName   String
+  lastName    String
+  sex         Sex
+  dateOfBirth DateTime?
+  bloodGroup  BloodGroup?
+  fathersName String?
+
+  // ── Address ───────────────────────────────────────────
+  addressLine1 String?
+  addressLine2 String?
+  area         String?
+  city         String?
+  stateName    String? // residential state (not PT state)
+  country      String? @default("India")
+  pincode      String?
+
+  // ── Employment ────────────────────────────────────────
+  designation   String?
+  type          EmpType   @default(ON_ROLLS)
+  status        EmpStatus @default(PROBATION)
+  dateOfJoining DateTime?
+  dateOfExit    DateTime?
+  isBlacklisted Boolean   @default(false)
+
+  // ── Statutory IDs ─────────────────────────────────────
+  aadhaarNumber String?   @unique
+  panNumber     String?   @unique
+  epfNumber     String?   @unique
+  uanNumber     String?   @unique
+  esiNumber     String?   @unique
+  taxRegime     TaxRegime @default(NEW)
+  ptState       String    @default("MH") // state for Professional Tax calculation
+  pfExempt      Boolean   @default(false) // true = skip EPF deduction (e.g. salary > threshold / opted out)
+
+  // ── Bank ──────────────────────────────────────────────
+  bankAccount String?
+  ifsc        String?
+  bankName    String?
+
+  // ── Documents (relative paths served by backend) ──────
+  photoPath        String?
+  aadhaarDocPath   String?
+  panDocPath       String?
+  bankPassbookPath String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  faceDescriptor  String?  // JSON-serialised Float32Array[128] from face-api.js
+
+  // ── Shift ─────────────────────────────────────────────
+  shiftId         String?
+
+  shift           Shift?           @relation(fields: [shiftId], references: [id])
+  siteAssignments EmployeeSite[]
+  dependents      Dependent[]
+  salaryRevisions SalaryRevision[]
+  attendances     Attendance[]
+  attendanceLogs  AttendanceLog[]
+  leaveBalances   LeaveBalance[]
+  leaveRecords    LeaveRecord[]
+  payslips        Payslip[]
+  siteSummaries   AttendanceSiteSummary[]
+  advances        EmployeeAdvance[]
+
+  @@map("employees")
+}
+
+enum Sex {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BloodGroup {
+  A_POS
+  A_NEG
+  B_POS
+  B_NEG
+  O_POS
+  O_NEG
+  AB_POS
+  AB_NEG
+}
+
+enum EmpType {
+  INTERN
+  ON_ROLLS
+  ON_CONTRACT
+}
+
+enum EmpStatus {
+  ACTIVE
+  PROBATION
+  NOTICE_PERIOD
+  INACTIVE
+}
+
+enum TaxRegime {
+  NEW
+  OLD
+}
+
+// ============================================================
+// SITES  (work locations — drives minimum wage + geo-fencing)
+// ============================================================
+
+model Site {
+  id             String  @id @default(uuid())
+  name           String
+  city           String?
+  state          String?
+  isActive        Boolean @default(true)
+  esiApplicable   Boolean @default(true)  // false = ESI not deducted for this site's employees
+  lat            Float?  // geo-fence centre latitude
+  lng            Float?  // geo-fence centre longitude
+  geofenceRadius Int     @default(200) // metres
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employeeAssignments EmployeeSite[]
+  minimumWages        MinimumWage[]
+  attendanceLogs      AttendanceLog[]
+  holidays            Holiday[]
+  siteSummaries       AttendanceSiteSummary[]
+  payslipAllocations  PayslipSiteAllocation[]
+
+  @@map("sites")
+}
+
+// ============================================================
+// EMPLOYEE ↔ SITE  (many-to-many with primary flag)
+// ============================================================
+
+model EmployeeSite {
+  id         String    @id @default(uuid())
+  employeeId String
+  siteId     String
+  isPrimary  Boolean   @default(false)  // primary site for cost/ESI/PT determination
+  startDate  DateTime? @db.Date         // when assignment started (optional)
+  // endDate is open-ended — null means currently active
+
+  createdAt  DateTime  @default(now())
+
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site       Site      @relation(fields: [siteId],     references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, siteId])
+  @@map("employee_sites")
+}
+
+// ============================================================
+// DESIGNATION MASTER  (designation → skill level)
+// ============================================================
+
+enum SkillLevel {
+  STAFF
+  SKILLED
+  SEMI_SKILLED
+  UNSKILLED
+}
+
+model DesignationMaster {
+  id          String     @id @default(uuid())
+  designation String     @unique
+  skillLevel  SkillLevel
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@map("designation_master")
+}
+
+// ============================================================
+// SHIFTS
+// ============================================================
+
+model Shift {
+  id         String   @id @default(uuid())
+  name       String   @unique        // e.g. "8-Hour Shift", "12-Hour Shift"
+  shiftHours Int                     // 8, 10, or 12
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employees  Employee[]
+
+  @@map("shifts")
+}
+
+// ============================================================
+// MINIMUM WAGE  (site × skill level × period)
+// ============================================================
+
+model MinimumWage {
+  id            String     @id @default(uuid())
+  siteId        String
+  skillLevel    SkillLevel
+  monthlyWage   Decimal    @db.Decimal(10, 2)
+  effectiveFrom DateTime
+  effectiveTo   DateTime?  // null = currently active
+
+  createdAt DateTime @default(now())
+
+  site Site @relation(fields: [siteId], references: [id])
+
+  @@unique([siteId, skillLevel, effectiveFrom])
+  @@map("minimum_wages")
+}
+
+// ============================================================
+// SALARY REVISIONS  (history — replaces salary fields on Employee)
+// ============================================================
+
+model SalaryRevision {
+  id            String    @id @default(uuid())
+  employeeId    String
+  effectiveFrom DateTime
+  effectiveTo   DateTime? // null = currently active
+
+  grossSalary    Decimal @db.Decimal(12, 2)
+  basic          Decimal @db.Decimal(12, 2)
+  hra            Decimal @db.Decimal(12, 2)
+  medical        Decimal @db.Decimal(12, 2)
+  conveyance     Decimal @db.Decimal(12, 2)
+  bonus          Decimal @db.Decimal(12, 2)
+  leaveAllowance Decimal @db.Decimal(12, 2)
+  otherAllowance Decimal @db.Decimal(12, 2)
+  otMultiplier   Decimal @default(1.5) @db.Decimal(4, 2) // OT rate multiplier (1.5x or 2x of hourly basic)
+
+  remarks   String?
+  createdAt DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("salary_revisions")
+}
+
+// ============================================================
+// DEPENDENTS
+// ============================================================
+
+model Dependent {
+  id           String       @id @default(uuid())
+  employeeId   String
+  firstName    String
+  lastName     String
+  sex          Sex
+  relationship Relationship
+  dateOfBirth  DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@map("dependents")
+}
+
+enum Relationship {
+  SPOUSE
+  CHILD
+  PARENT
+  SIBLING
+  OTHER
+}
+
+// ============================================================
+// ATTENDANCE
+// ============================================================
+
+// Monthly aggregate (used by payroll)
+model Attendance {
+  id          String  @id @default(uuid())
+  employeeId  String
+  month       Int
+  year        Int
+  workingDays Int     @default(26)
+  presentDays Decimal @default(0) @db.Decimal(4, 1)
+  lopDays     Decimal @default(0) @db.Decimal(4, 1)
+  otHours     Decimal @default(0) @db.Decimal(6, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, month, year])
+  @@map("attendance")
+}
+
+// Daily kiosk / web punch log
+enum PunchSource {
+  KIOSK
+  WEB
+  MANUAL
+}
+
+enum DayStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  HOLIDAY
+  WEEKEND
+  LEAVE
+}
+
+model AttendanceLog {
+  id         String      @id @default(uuid())
+  employeeId String
+  siteId     String?
+  date       DateTime    @db.Date
+  punchIn    DateTime?
+  punchOut   DateTime?
+  lat        Float?
+  lng        Float?
+  onSite     Boolean     @default(true)
+  source     PunchSource @default(KIOSK)
+  status     DayStatus   @default(PRESENT)
+  remarks    String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site     Site?    @relation(fields: [siteId], references: [id])
+
+  @@unique([employeeId, date])
+  @@map("attendance_logs")
+}
+
+// Monthly per-site attendance summary for each employee (derived from AttendanceLog by auto-fill)
+model AttendanceSiteSummary {
+  id          String   @id @default(uuid())
+  employeeId  String
+  siteId      String?  // null = days without a recorded site (leaves, manual entries)
+  month       Int
+  year        Int
+  presentDays Decimal  @default(0) @db.Decimal(4, 1)
+  otHours     Decimal  @default(0) @db.Decimal(6, 2)
+
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  employee    Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  site        Site?    @relation(fields: [siteId],     references: [id], onDelete: SetNull)
+
+  @@unique([employeeId, siteId, month, year])
+  @@map("attendance_site_summaries")
+}
+
+// ============================================================
+// HOLIDAYS
+// ============================================================
+
+enum HolidayType {
+  NATIONAL
+  FESTIVAL
+  OPTIONAL
+}
+
+model Holiday {
+  id        String      @id @default(uuid())
+  name      String
+  date      DateTime    @db.Date
+  type      HolidayType
+  year      Int         // denormalised for fast yearly queries
+  siteId    String?     // null = applies to ALL sites; set = site-specific holiday
+
+  createdAt DateTime @default(now())
+
+  site      Site?   @relation(fields: [siteId], references: [id], onDelete: SetNull)
+
+  @@unique([date, siteId])   // same date can appear once per site + once globally (null)
+  @@map("holidays")
+}
+
+// ============================================================
+// LEAVES
+// ============================================================
+
+enum LeaveType {
+  PL
+  CL
+  SL
+  LWP
+}
+
+// Per-employee per-year allocation — "used" is derived from LeaveRecord sum
+model LeaveBalance {
+  id          String  @id @default(uuid())
+  employeeId  String
+  year        Int
+  plAccrued   Decimal @default(0) @db.Decimal(5, 1)  // running PL accrued this year
+  clAllocated Decimal @default(0) @db.Decimal(5, 1)  // annual CL grant
+  slAllocated Decimal @default(0) @db.Decimal(5, 1)  // annual SL grant
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, year])
+  @@map("leave_balances")
+}
+
+// Individual leave entries — HR enters before auto-fill
+model LeaveRecord {
+  id         String    @id @default(uuid())
+  employeeId String
+  date       DateTime  @db.Date
+  leaveType  LeaveType
+  days       Decimal   @db.Decimal(3, 1)  // 0.5 or 1.0
+  remarks    String?
+
+  createdAt  DateTime  @default(now())
+
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+
+  @@unique([employeeId, date])
+  @@map("leave_records")
+}
+
+// ============================================================
+// PAYROLL
+// ============================================================
+
+model PayrollRun {
+  id     String        @id @default(uuid())
+  month  Int
+  year   Int
+  status PayrollStatus @default(DRAFT)
+  runAt  DateTime      @default(now())
+  runBy  String?
+
+  payslips          Payslip[]
+  advanceRecoveries AdvanceRecovery[]
+
+  @@unique([month, year])
+  @@map("payroll_runs")
+}
+
+enum PayrollStatus {
+  DRAFT
+  PROCESSED
+  APPROVED
+  PAID
+}
+
+model Payslip {
+  id           String @id @default(uuid())
+  payrollRunId String
+  employeeId   String
+
+  // ── Attendance summary ────────────────────────────────
+  workingDays Int
+  presentDays Decimal @db.Decimal(4, 1)
+  lopDays     Decimal @db.Decimal(4, 1)
+  otHours     Decimal @db.Decimal(6, 2)
+
+  // ── Earnings (pro-rated) ──────────────────────────────
+  basic          Decimal @db.Decimal(12, 2)
+  hra            Decimal @db.Decimal(12, 2)
+  medical        Decimal @db.Decimal(12, 2)
+  conveyance     Decimal @db.Decimal(12, 2)
+  bonus          Decimal @db.Decimal(12, 2)  // was 'special'
+  leaveAllowance Decimal @db.Decimal(12, 2)
+  otherAllowance Decimal @db.Decimal(12, 2)  // was 'other'
+  otPay          Decimal @db.Decimal(12, 2)
+  gross          Decimal @db.Decimal(12, 2)
+
+  // ── Employee deductions ───────────────────────────────
+  empPF            Decimal @db.Decimal(12, 2)
+  empESI           Decimal @db.Decimal(12, 2)
+  pt               Decimal @db.Decimal(12, 2)
+  tds              Decimal @default(0) @db.Decimal(12, 2)
+  penaltyDeduction Decimal @default(0) @db.Decimal(12, 2)
+  advanceDeduction Decimal @default(0) @db.Decimal(12, 2)
+  totalDed         Decimal @db.Decimal(12, 2)
+
+  // ── Employer costs (for CTC / accounting view) ────────
+  emplPF   Decimal @db.Decimal(12, 2)  // 12% employer EPF (EPF 3.67% + EPS 8.33%)
+  emplESI  Decimal @db.Decimal(12, 2)  // 3.25% employer ESI
+  edli     Decimal @default(0) @db.Decimal(12, 2)  // 0.5% EDLI insurance charge
+  epfAdmin Decimal @default(0) @db.Decimal(12, 2)  // 0.5% EPF admin charge
+
+  net Decimal @db.Decimal(12, 2)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  payrollRun     PayrollRun             @relation(fields: [payrollRunId], references: [id], onDelete: Cascade)
+  employee       Employee               @relation(fields: [employeeId],   references: [id])
+  siteAllocations PayslipSiteAllocation[]
+
+  @@unique([payrollRunId, employeeId])
+  @@map("payslips")
+}
+
+// Per-payslip site cost — full re-calculation per site (for reporting/accounting only)
+model PayslipSiteAllocation {
+  id         String  @id @default(uuid())
+  payslipId  String
+  siteId     String?   // null = unallocated (primary site receives these)
+  siteName   String?   // denormalised for reporting stability
+
+  presentDays Decimal @db.Decimal(4, 1)
+  otHours     Decimal @db.Decimal(6, 2)
+
+  // Earnings (re-calculated for this site's days)
+  basic          Decimal @db.Decimal(12, 2)
+  hra            Decimal @db.Decimal(12, 2)
+  medical        Decimal @db.Decimal(12, 2)
+  conveyance     Decimal @db.Decimal(12, 2)
+  bonus          Decimal @db.Decimal(12, 2)
+  leaveAllowance Decimal @db.Decimal(12, 2)
+  otherAllowance Decimal @db.Decimal(12, 2)
+  otPay          Decimal @db.Decimal(12, 2)
+  gross          Decimal @db.Decimal(12, 2)
+
+  // Employee deductions (re-calculated per site rules)
+  empPF  Decimal @db.Decimal(12, 2)
+  empESI Decimal @db.Decimal(12, 2)
+  pt     Decimal @db.Decimal(12, 2)
+
+  // Employer costs
+  emplPF   Decimal @db.Decimal(12, 2)
+  emplESI  Decimal @db.Decimal(12, 2)
+  edli     Decimal @db.Decimal(12, 2)
+  epfAdmin Decimal @db.Decimal(12, 2)
+
+  // Total cost to company for this site
+  totalCost Decimal @db.Decimal(12, 2)  // gross + emplPF + emplESI + edli + epfAdmin
+
+  createdAt DateTime @default(now())
+
+  payslip Payslip @relation(fields: [payslipId], references: [id], onDelete: Cascade)
+  site    Site?   @relation(fields: [siteId],    references: [id], onDelete: SetNull)
+
+  @@map("payslip_site_allocations")
+}
+
+// ============================================================
+// ADVANCES
+// ============================================================
+
+enum AdvanceType {
+  ADHOC   // one-time advance recovered in monthly installments
+  WEEKLY  // ₹1000 weekly advance, recovered in full within the same month
+}
+
+enum AdvanceStatus {
+  ACTIVE      // balance still outstanding
+  RECOVERED   // fully recovered
+  WRITTEN_OFF // waived / written off
+}
+
+model EmployeeAdvance {
+  id                String        @id @default(uuid())
+  employeeId        String
+  type              AdvanceType
+  amount            Decimal       @db.Decimal(10, 2)   // amount disbursed
+  disbursedOn       DateTime      @db.Date             // date of disbursement
+  reason            String?
+  installmentAmount Decimal?      @db.Decimal(10, 2)   // ADHOC: agreed monthly recovery
+  balanceAmount     Decimal       @db.Decimal(10, 2)   // outstanding (starts = amount)
+  status            AdvanceStatus @default(ACTIVE)
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  employee   Employee          @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  recoveries AdvanceRecovery[]
+
+  @@map("employee_advances")
+}
+
+model AdvanceRecovery {
+  id           String   @id @default(uuid())
+  advanceId    String
+  amount       Decimal  @db.Decimal(10, 2)
+  month        Int
+  year         Int
+  payrollRunId String?
+  note         String?
+  createdAt    DateTime @default(now())
+
+  advance    EmployeeAdvance @relation(fields: [advanceId], references: [id], onDelete: Cascade)
+  payrollRun PayrollRun?     @relation(fields: [payrollRunId], references: [id], onDelete: SetNull)
+
+  @@map("advance_recoveries")
+}
+
+// ============================================================
+// ROLE PERMISSIONS
+// ============================================================
+
+model RolePermission {
+  id        String   @id @default(uuid())
+  role      String
+  module    String   // 'employees' | 'attendance' | 'leave' | 'payroll' | 'reports' | 'settings' | 'kiosk'
+  canCreate Boolean  @default(false)
+  canRead   Boolean  @default(true)
+  canUpdate Boolean  @default(false)
+  canDelete Boolean  @default(false)
+  updatedAt DateTime @updatedAt
+
+  @@unique([role, module])
+  @@map("role_permissions")
+}
+
+// ============================================================
+// COMPANY SETTINGS
+// ============================================================
+
+model CompanySettings {
+  id          String  @id @default("singleton")
+  companyName String  @default("Your Company Ltd.")
+  address     String  @default("")
+  cin         String  @default("")
+  tan         String  @default("")
+  pan         String  @default("")
+  state       String  @default("MH")
+  pfCeiling   Int     @default(15000)
+  esiCeiling  Int     @default(21000)
+  logoPath    String?
+
+  updatedAt DateTime @updatedAt
+
+  @@map("company_settings")
+}
