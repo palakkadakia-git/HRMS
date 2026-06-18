@@ -168,7 +168,7 @@ export class PayrollService {
       const medical0      = Number(salary.medical);
       const conveyance0   = Number(salary.conveyance);
       const bonus0        = Number(salary.bonus);
-      const leaveAllow0   = Number(salary.leaveAllowance);
+      const leaveAllow0   = Number(salary.leaveWages);
       const otherAllow0   = Number(salary.otherAllowance);
       const otMultiplier  = Number(salary.otMultiplier ?? 1.5);
       const shiftHours    = emp.shift?.shiftHours ?? 8;
@@ -179,7 +179,7 @@ export class PayrollService {
       const medical        = r2(medical0      * ratio);
       const conveyance     = r2(conveyance0   * ratio);
       const bonus          = r2(bonus0        * ratio);
-      const leaveAllowance = r2(leaveAllow0   * ratio);
+      const leaveWages     = r2(leaveAllow0   * ratio);
       const otherAllowance = r2(otherAllow0   * ratio);
 
       // OT pay: hourly basic rate × multiplier × OT hours
@@ -187,7 +187,7 @@ export class PayrollService {
       const hourlyBasic = basic0 / (26 * shiftHours);
       const otPay       = r2(hourlyBasic * otMultiplier * otHours);
 
-      const gross = r2(basic + hra + medical + conveyance + bonus + leaveAllowance + otherAllowance + otPay);
+      const gross = r2(basic + hra + medical + conveyance + bonus + leaveWages + otherAllowance + otPay);
 
       // ── EPF ────────────────────────────────────────────────────────────
       let empPF = 0, emplPF = 0, edli = 0, epfAdmin = 0;
@@ -259,7 +259,7 @@ export class PayrollService {
         medical,
         conveyance,
         bonus,
-        leaveAllowance,
+        leaveWages,
         otherAllowance,
         otPay,
         gross,
@@ -440,12 +440,12 @@ export class PayrollService {
         const medical        = r2(Number(salary.medical)        * ratio);
         const conveyance     = r2(Number(salary.conveyance)     * ratio);
         const bonus          = r2(Number(salary.bonus)          * ratio);
-        const leaveAllowance = r2(Number(salary.leaveAllowance) * ratio);
+        const leaveWages     = r2(Number(salary.leaveWages) * ratio);
         const otherAllowance = r2(Number(salary.otherAllowance) * ratio);
 
         const hourlyBasic = Number(salary.basic) / (26 * shiftHours);
         const otPay       = r2(hourlyBasic * otMultiplier * alloc.otHours);
-        const gross       = r2(basic + hra + medical + conveyance + bonus + leaveAllowance + otherAllowance + otPay);
+        const gross       = r2(basic + hra + medical + conveyance + bonus + leaveWages + otherAllowance + otPay);
 
         let empPF = 0, emplPF = 0, edli = 0, epfAdmin = 0;
         if (!empPfExempt) {
@@ -472,7 +472,7 @@ export class PayrollService {
           siteName:      alloc.siteName,
           presentDays:   alloc.presentDays,
           otHours:       alloc.otHours,
-          basic, hra, medical, conveyance, bonus, leaveAllowance, otherAllowance, otPay, gross,
+          basic, hra, medical, conveyance, bonus, leaveWages, otherAllowance, otPay, gross,
           empPF, empESI, pt,
           emplPF, emplESI, edli, epfAdmin,
           totalCost,

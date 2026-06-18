@@ -251,7 +251,7 @@ export interface SalaryRevision {
   medical: number;
   conveyance: number;
   bonus: number;
-  leaveAllowance: number;
+  leaveWages: number;
   otherAllowance: number;
   otMultiplier: number;     // OT rate multiplier (default 1.5)
   remarks?: string | null;
@@ -265,7 +265,7 @@ export interface SalaryComponents {
   medical: number;
   conveyance: number;
   bonus: number;
-  leaveAllowance: number;
+  leaveWages: number;
   otherAllowance: number;
 }
 
@@ -455,7 +455,7 @@ export interface Payslip {
   medical: number;
   conveyance: number;
   bonus: number;
-  leaveAllowance: number;
+  leaveWages: number;
   otherAllowance: number;
   otPay: number;
   gross: number;

@@ -39,7 +39,7 @@ function SalaryPreview({ employeeId, gross }: { employeeId: string; gross: numbe
       <Row label="Medical"           value={data.medical} />
       <Row label="Conveyance"        value={data.conveyance} />
       <Row label="Bonus (Bonus Act)" value={data.bonus} />
-      <Row label="Leave Allowance"   value={data.leaveAllowance} />
+      <Row label="Leave Wages"        value={data.leaveWages} />
       <Row label="Other Allowance"   value={data.otherAllowance} />
       <Row label="Gross (CTC)"       value={data.grossSalary} strong />
     </div>
@@ -201,7 +201,7 @@ function RevisionCard({ rev }: { rev: SalaryRevision }) {
           <Row label="Medical"        value={rev.medical} />
           <Row label="Conveyance"     value={rev.conveyance} />
           {rev.bonus > 0          && <Row label="Bonus"          value={rev.bonus} />}
-          {rev.leaveAllowance > 0 && <Row label="Leave Allow."  value={rev.leaveAllowance} />}
+          {rev.leaveWages > 0     && <Row label="Leave Wages"   value={rev.leaveWages} />}
           <Row label="Other Allow."   value={rev.otherAllowance} />
           <Row label="Gross"          value={rev.grossSalary} strong />
           <div className="flex justify-between py-1 text-xs text-slate-400 border-t mt-1 pt-1">

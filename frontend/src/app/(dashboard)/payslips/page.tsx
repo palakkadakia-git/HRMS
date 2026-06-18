@@ -38,7 +38,7 @@ function PayslipDoc({ ps, companyName, logoUrl }: { ps: Payslip; companyName: st
     { label: 'Medical Allowance', val: ps.medical        },
     { label: 'Conveyance',        val: ps.conveyance     },
     { label: 'Bonus',             val: ps.bonus          },
-    { label: 'Leave Allowance',   val: ps.leaveAllowance },
+    { label: 'Leave Wages',       val: ps.leaveWages },
     { label: 'Other Allowance',   val: ps.otherAllowance },
     { label: 'OT Pay',            val: ps.otPay          },
   ].filter((e) => Number(e.val) > 0);

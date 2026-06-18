@@ -15,7 +15,7 @@ import { CreateSalaryRevisionDto } from './dto/create-salary-revision.dto';
 //    medical        = round(max(min(1250, avail₂), 0))
 //    avail₃         = avail₂ − medical
 //    conveyance     = round(max(min(1600, avail₃), 0))
-//    otherAllowance = gross − basic − bonus − leaveAllow − hra − medical − conveyance
+//    otherAllowance = gross − basic − bonus − leaveWages − hra − medical − conveyance
 //
 //  Note: when minWage > gross × 0.50 (minimum wage is binding), avail₁ will be small
 //  or zero, so HRA / medical / conveyance / otherAllowance naturally collapse to 0.
@@ -30,7 +30,7 @@ export interface SalaryComponents {
   medical:        number;
   conveyance:     number;
   bonus:          number;
-  leaveAllowance: number;
+  leaveWages: number;
   otherAllowance: number;
 }
 
@@ -58,7 +58,7 @@ export function calcSalaryComponents(gross: number, minWage = 0): SalaryComponen
     medical,
     conveyance,
     bonus,
-    leaveAllowance: leaveAllow,
+    leaveWages: leaveAllow,
     otherAllowance: otherAllow,
   };
 }
@@ -130,7 +130,7 @@ export class SalaryRevisionsService {
         medical:        comps.medical,
         conveyance:     comps.conveyance,
         bonus:          comps.bonus,
-        leaveAllowance: comps.leaveAllowance,
+        leaveWages: comps.leaveWages,
         otherAllowance: comps.otherAllowance,
         otMultiplier:   dto.otMultiplier ?? 1.5,
         remarks:        dto.remarks ?? null,

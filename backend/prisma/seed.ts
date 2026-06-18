@@ -17,11 +17,11 @@ function calcComponents(gross: number) {
   const hra = Math.round((basic * 0.4) / 100) * 100;
   const medical = 1250;
   const conveyance = 1600;
-  const leaveAllowance = 0;
+  const leaveWages = 0;
   // Bonus Act: mandatory only when basic ≤ ₹ 7,000
   const bonus = basic <= 7000 ? Math.round(basic * 0.0833) : 0;
-  const otherAllowance = gross - basic - hra - medical - conveyance - bonus - leaveAllowance;
-  return { basic, hra, medical, conveyance, leaveAllowance, bonus, otherAllowance };
+  const otherAllowance = gross - basic - hra - medical - conveyance - bonus - leaveWages;
+  return { basic, hra, medical, conveyance, leaveWages, bonus, otherAllowance };
 }
 
 async function main() {

@@ -78,7 +78,7 @@ export class ReportsService {
       'S.No', 'Emp Code', 'Employee Name', 'Designation', 'Site',
       'Working Days', 'Present Days', 'LOP Days', 'OT Hours',
       // Earnings
-      'Basic', 'HRA', 'Medical', 'Conveyance', 'Bonus', 'Leave Allow.',
+      'Basic', 'HRA', 'Medical', 'Conveyance', 'Bonus', 'Leave Wages',
       'Other Allow.', 'OT Pay', 'Gross',
       // Deductions
       'Emp PF', 'Emp ESI', 'Prof. Tax', 'TDS', 'Penalty', 'Advance',
@@ -108,7 +108,7 @@ export class ReportsService {
         Number(p.medical),
         Number(p.conveyance),
         Number(p.bonus),
-        Number(p.leaveAllowance),
+        Number(p.leaveWages),
         Number(p.otherAllowance),
         Number(p.otPay),
         Number(p.gross),
@@ -132,7 +132,7 @@ export class ReportsService {
       const colTotal = payslips.reduce((sum, p) => {
         const keys: (keyof typeof p)[] = [
           'basic', 'hra', 'medical', 'conveyance', 'bonus',
-          'leaveAllowance', 'otherAllowance', 'otPay', 'gross',
+          'leaveWages', 'otherAllowance', 'otPay', 'gross',
           'empPF', 'empESI', 'pt', 'tds', 'penaltyDeduction',
           'advanceDeduction', 'totalDed', 'net',
         ];
