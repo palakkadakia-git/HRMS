@@ -56,6 +56,24 @@ export class PayrollService {
           `Payroll for ${month}/${year} is already ${existing.status} and cannot be re-generated.`,
         );
       }
+      // Reverse any recoveries already recorded against this DRAFT before deleting
+      const existingPenRec = await this.prisma.penaltyRecovery.findMany({ where: { payrollRunId: existing.id } });
+      for (const rec of existingPenRec) {
+        const pen = await this.prisma.penalty.findUnique({ where: { id: rec.penaltyId } });
+        if (pen) {
+          await this.prisma.penalty.update({
+            where: { id: rec.penaltyId },
+            data: { balanceAmount: r2(Number(pen.balanceAmount) + Number(rec.amount)), status: 'PENDING' },
+          });
+        }
+      }
+      const existingAdvRec = await this.prisma.advanceRecovery.findMany({ where: { payrollRunId: existing.id } });
+      for (const rec of existingAdvRec) {
+        await this.prisma.employeeAdvance.update({
+          where: { id: rec.advanceId },
+          data: { balanceAmount: { increment: Number(rec.amount) }, status: 'ACTIVE' },
+        });
+      }
       await this.prisma.payrollRun.delete({ where: { id: existing.id } });
     }
 
@@ -63,7 +81,7 @@ export class PayrollService {
     const monthStart = new Date(year, month - 1, 1);
     const monthEnd   = new Date(year, month, 0); // last day of month
 
-    const [settings, employees, attendanceRows, advanceRows] = await Promise.all([
+    const [settings, employees, attendanceRows, advanceRows, penaltyRows] = await Promise.all([
       this.prisma.companySettings.findUnique({ where: { id: 'singleton' } }),
       this.prisma.employee.findMany({
         where: { status: { not: 'INACTIVE' } },
@@ -81,17 +99,22 @@ export class PayrollService {
         },
       }),
       this.prisma.attendance.findMany({ where: { month, year } }),
-      // Fetch active ADHOC advances + WEEKLY advances disbursed in this month
+      // ADHOC advances disbursed on or before this month + WEEKLY advances disbursed this month
       this.prisma.employeeAdvance.findMany({
         where: {
           status: 'ACTIVE',
           OR: [
-            { type: 'ADHOC' },
-            {
-              type:        'WEEKLY',
-              disbursedOn: { gte: monthStart, lte: monthEnd },
-            },
+            { type: 'ADHOC',  disbursedOn: { lte: monthEnd } },
+            { type: 'WEEKLY', disbursedOn: { gte: monthStart, lte: monthEnd } },
           ],
+        },
+      }),
+      // Pending/partially-recovered penalties issued on or before this month
+      this.prisma.penalty.findMany({
+        where: {
+          status:        { in: ['PENDING', 'PARTIALLY_RECOVERED'] },
+          balanceAmount: { gt: 0 },
+          date:          { lte: monthEnd },
         },
       }),
     ]);
@@ -107,6 +130,13 @@ export class PayrollService {
     for (const adv of advanceRows) {
       if (!advanceMap.has(adv.employeeId)) advanceMap.set(adv.employeeId, []);
       advanceMap.get(adv.employeeId)!.push(adv);
+    }
+
+    // Index penalties by employeeId
+    const penaltyMap = new Map<string, typeof penaltyRows>();
+    for (const pen of penaltyRows) {
+      if (!penaltyMap.has(pen.employeeId)) penaltyMap.set(pen.employeeId, []);
+      penaltyMap.get(pen.employeeId)!.push(pen);
     }
 
     // ── Create payroll run ────────────────────────────────────────────────
@@ -181,28 +211,41 @@ export class PayrollService {
       // ── PT ─────────────────────────────────────────────────────────────
       const pt = calcPT(gross, emp.ptState, month);
 
-      // ── Advances ────────────────────────────────────────────────────────
+      // ── Statutory deductions (always full) ─────────────────────────────
+      const tds = 0;
+      const statutoryDed = r2(empPF + empESI + pt + tds);
+
+      // ── Available budget for penalty + advance (net cannot go negative) ─
+      let budget = r2(Math.max(0, gross - statutoryDed));
+
+      // ── Penalties first ─────────────────────────────────────────────────
+      const empPenalties = penaltyMap.get(emp.id) ?? [];
+      let penaltyDeduction = 0;
+      for (const pen of empPenalties) {
+        if (budget <= 0) break;
+        const recover = Math.min(Number(pen.balanceAmount), budget);
+        penaltyDeduction += recover;
+        budget = r2(budget - recover);
+      }
+      penaltyDeduction = r2(penaltyDeduction);
+
+      // ── Advances second ─────────────────────────────────────────────────
       const empAdvances = advanceMap.get(emp.id) ?? [];
       let advanceDeduction = 0;
       for (const adv of empAdvances) {
-        if (adv.type === 'WEEKLY') {
-          advanceDeduction += Number(adv.amount); // recover full weekly amount
-        } else {
-          // ADHOC — recover the installment (capped at remaining balance)
-          const installment = Math.min(
-            Number(adv.installmentAmount ?? adv.balanceAmount),
-            Number(adv.balanceAmount),
-          );
-          advanceDeduction += installment;
-        }
+        if (budget <= 0) break;
+        const wanted = adv.type === 'WEEKLY'
+          ? Number(adv.amount)
+          : Math.min(Number(adv.installmentAmount ?? adv.balanceAmount), Number(adv.balanceAmount));
+        const recover = Math.min(wanted, budget);
+        advanceDeduction += recover;
+        budget = r2(budget - recover);
       }
       advanceDeduction = r2(advanceDeduction);
 
       // ── Totals ─────────────────────────────────────────────────────────
-      const tds              = 0;  // TDS computed separately / manually adjusted
-      const penaltyDeduction = 0;
-      const totalDed = r2(empPF + empESI + pt + tds + penaltyDeduction + advanceDeduction);
-      const net      = r2(gross - totalDed);
+      const totalDed = r2(statutoryDed + penaltyDeduction + advanceDeduction);
+      const net      = r2(Math.max(0, gross - totalDed));
 
       payslipData.push({
         payrollRunId: run.id,
@@ -238,49 +281,62 @@ export class PayrollService {
     // Bulk insert payslips
     await this.prisma.payslip.createMany({ data: payslipData as any });
 
-    // ── Record advance recoveries ─────────────────────────────────────────
+    // ── Record penalty & advance recoveries ──────────────────────────────
     const createdPayslips = await this.prisma.payslip.findMany({
       where:  { payrollRunId: run.id },
-      select: { id: true, employeeId: true, advanceDeduction: true },
+      select: { id: true, employeeId: true, penaltyDeduction: true, advanceDeduction: true },
     });
     const payslipByEmp = new Map(createdPayslips.map(ps => [ps.employeeId, ps]));
 
+    // Penalties (priority 1) — replay the same budget logic to get exact per-penalty amounts
+    for (const [empId, penalties] of penaltyMap.entries()) {
+      const ps = payslipByEmp.get(empId);
+      if (!ps) continue;
+
+      let remaining = Number(ps.penaltyDeduction); // total actually deducted for this employee
+      for (const pen of penalties) {
+        if (remaining <= 0) break;
+        const recover  = Math.min(Number(pen.balanceAmount), remaining);
+        remaining      = r2(remaining - recover);
+        const newBal   = r2(Number(pen.balanceAmount) - recover);
+
+        await this.prisma.penaltyRecovery.create({
+          data: { penaltyId: pen.id, amount: recover, month, year, payrollRunId: run.id },
+        });
+        await this.prisma.penalty.update({
+          where: { id: pen.id },
+          data: {
+            balanceAmount: newBal,
+            status: newBal <= 0 ? 'RECOVERED' : 'PARTIALLY_RECOVERED',
+          },
+        });
+      }
+    }
+
+    // Advances (priority 2) — replay same logic
     for (const [empId, advances] of advanceMap.entries()) {
       const ps = payslipByEmp.get(empId);
       if (!ps) continue;
 
+      let remaining = Number(ps.advanceDeduction);
       for (const adv of advances) {
-        let recoveryAmount: number;
-        if (adv.type === 'WEEKLY') {
-          recoveryAmount = Number(adv.amount);
-        } else {
-          recoveryAmount = Math.min(
-            Number(adv.installmentAmount ?? adv.balanceAmount),
-            Number(adv.balanceAmount),
-          );
-        }
+        if (remaining <= 0) break;
+        const wanted   = adv.type === 'WEEKLY'
+          ? Number(adv.amount)
+          : Math.min(Number(adv.installmentAmount ?? adv.balanceAmount), Number(adv.balanceAmount));
+        const recover  = Math.min(wanted, remaining);
+        remaining      = r2(remaining - recover);
+        const newBal   = r2(Number(adv.balanceAmount) - recover);
 
-        const newBalance = r2(Number(adv.balanceAmount) - recoveryAmount);
-
-        // Create recovery record
         await this.prisma.advanceRecovery.create({
           data: {
-            advanceId:    adv.id,
-            amount:       recoveryAmount,
-            month,
-            year,
-            payrollRunId: run.id,
-            note:         adv.type === 'WEEKLY' ? 'Weekly advance recovery' : 'Installment recovery',
+            advanceId: adv.id, amount: recover, month, year, payrollRunId: run.id,
+            note: adv.type === 'WEEKLY' ? 'Weekly advance recovery' : 'Installment recovery',
           },
         });
-
-        // Update advance balance and status
         await this.prisma.employeeAdvance.update({
           where: { id: adv.id },
-          data: {
-            balanceAmount: newBalance,
-            status: newBalance <= 0 ? 'RECOVERED' : 'ACTIVE',
-          },
+          data: { balanceAmount: newBal, status: newBal <= 0 ? 'RECOVERED' : 'ACTIVE' },
         });
       }
     }
@@ -572,17 +628,24 @@ export class PayrollService {
       throw new BadRequestException('Only DRAFT payroll runs can be deleted.');
     }
 
-    // Reverse any advance recoveries tied to this run
-    const recoveries = await this.prisma.advanceRecovery.findMany({
-      where: { payrollRunId: id },
-    });
-    for (const rec of recoveries) {
+    // Reverse penalty recoveries
+    const penRecoveries = await this.prisma.penaltyRecovery.findMany({ where: { payrollRunId: id } });
+    for (const rec of penRecoveries) {
+      const pen = await this.prisma.penalty.findUnique({ where: { id: rec.penaltyId } });
+      if (!pen) continue;
+      const newBal = r2(Number(pen.balanceAmount) + Number(rec.amount));
+      await this.prisma.penalty.update({
+        where: { id: rec.penaltyId },
+        data: { balanceAmount: newBal, status: 'PENDING' },
+      });
+    }
+
+    // Reverse advance recoveries
+    const advRecoveries = await this.prisma.advanceRecovery.findMany({ where: { payrollRunId: id } });
+    for (const rec of advRecoveries) {
       await this.prisma.employeeAdvance.update({
         where: { id: rec.advanceId },
-        data: {
-          balanceAmount: { increment: Number(rec.amount) },
-          status: 'ACTIVE',
-        },
+        data: { balanceAmount: { increment: Number(rec.amount) }, status: 'ACTIVE' },
       });
     }
 
